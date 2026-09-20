@@ -1,0 +1,35 @@
+{
+  "schema_version": "semantipiler.transition-admissibility.v1",
+  "declaration_id": "artifact-admission-transitions",
+  "purpose": "Plugin lifecycle transitions: CANDIDATE -> VERIFIED -> RELEASED.",
+  "transitions": [
+    {
+      "transition_id": "transition:verify-candidate",
+      "transition_kind": "OPERATIONAL",
+      "state_identity": "state://com.acme.sandbox",
+      "source_state": "CANDIDATE",
+      "target_state": "VERIFIED",
+      "required_evidence_refs": ["evidence:plugin-audit-passed"],
+      "required_authority": {
+        "max_contract_strength": "C2_STATEFUL_DOMAIN",
+        "allowed_scopes": [],
+        "forbidden_effects": [],
+        "allow_authority_expansion": false
+      }
+    },
+    {
+      "transition_id": "transition:admit-release",
+      "transition_kind": "OPERATIONAL",
+      "state_identity": "state://com.acme.sandbox",
+      "source_state": "VERIFIED",
+      "target_state": "RELEASED",
+      "required_evidence_refs": ["evidence:plugin-signature-verified"],
+      "required_authority": {
+        "max_contract_strength": "C3_AUTHORITY_BOUNDARY",
+        "allowed_scopes": [],
+        "forbidden_effects": [],
+        "allow_authority_expansion": false
+      }
+    }
+  ]
+}

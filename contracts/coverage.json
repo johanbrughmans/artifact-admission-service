@@ -1,0 +1,20 @@
+{
+  "schema_version": "semantipiler.capability-coverage.v2",
+  "declaration_id": "plugin-sandbox-coverage",
+  "purpose": "Plugin sandbox runtime capability coverage declaration.",
+  "claims": [
+    {
+      "claim_id": "claim:plugin-sandbox-isolation",
+      "capability_id": "capability://plugin-sandbox-isolation@v1",
+      "realization_claim_id": "realization://wasm-isolated-runtime@v1",
+      "semantic_dimensions": {
+        "isolated": true,
+        "runtime": "wasm"
+      },
+      "constraints": ["memory_limit_mb<=128"],
+      "evidence_refs": ["evidence:plugin-audit-passed"],
+      "resolution_kind": "EXACT_REALIZATION",
+      "allow_bounded_substitution": true
+    }
+  ]
+}

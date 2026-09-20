@@ -1,0 +1,48 @@
+{
+  "schema_version": "semantipiler.consumer-profile.v1",
+  "profile_id": "consumer-profile:artifact-admission-service",
+  "consumer_id": "consumer:artifact-admission-service",
+  "purpose": "Artifact admission and plugin sandbox release governance.",
+  "semantic_api_version": "v1",
+  "consumer_vocabulary": [
+    "plugin",
+    "sandbox",
+    "admission",
+    "signature",
+    "wasm"
+  ],
+  "declarations": {
+    "evidence_requirements": [
+      "contracts/evidence.json"
+    ],
+    "transitions": [
+      "contracts/transitions.json"
+    ],
+    "capability_coverage": [
+      "contracts/coverage.json"
+    ]
+  },
+  "structural_input_locations": [
+    "inputs/plugin_manifest.json"
+  ],
+  "evidence_locations": [
+    "evidence/audit_report.json",
+    "evidence/signature.json"
+  ],
+  "optional_adapters": [],
+  "authority_expectations": {
+    "consumer_owned": [
+      "artifact-admission-decision"
+    ],
+    "semantipiler_non_authority": [
+      "execute",
+      "deploy",
+      "promote",
+      "release",
+      "authority-expansion"
+    ]
+  },
+  "conformance_fixture_locations": [
+    "conformance/baseline.json"
+  ]
+}

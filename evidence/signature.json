@@ -1,0 +1,9 @@
+{
+  "evidence_id": "signature:plugin-signature-verified",
+  "requirement_id": "evidence:plugin-signature-verified",
+  "verifier": "cosign-verifier",
+  "subject": "plugin://com.acme.sandbox@1.0.0",
+  "signature_valid": true,
+  "verdict": "SATISFIED",
+  "provenance": "VERIFIED"
+}

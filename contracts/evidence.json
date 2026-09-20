@@ -1,0 +1,43 @@
+{
+  "schema_version": "semantipiler.evidence-requirement.v1",
+  "declaration_id": "artifact-admission-evidence",
+  "purpose": "Plugin security audit and signature verification evidence requirements.",
+  "requirements": [
+    {
+      "requirement_id": "evidence:plugin-audit-passed",
+      "subject": "plugin://com.acme.sandbox@1.0.0",
+      "claim": "security_audit_passed",
+      "accepted_evidence_kinds": ["audit.report"],
+      "accepted_provenances": ["VERIFIED"],
+      "verifier_identity": "static-security-scanner"
+    },
+    {
+      "requirement_id": "evidence:plugin-signature-verified",
+      "subject": "plugin://com.acme.sandbox@1.0.0",
+      "claim": "signature_verified",
+      "accepted_evidence_kinds": ["signature.record"],
+      "accepted_provenances": ["VERIFIED"],
+      "verifier_identity": "cosign-verifier"
+    }
+  ],
+  "bindings": [
+    {
+      "binding_id": "binding:plugin-audit-passed",
+      "requirement_id": "evidence:plugin-audit-passed",
+      "subject": "plugin://com.acme.sandbox@1.0.0",
+      "evidence_kind": "audit.report",
+      "provenance": "VERIFIED",
+      "verdict": "SATISFIED",
+      "verifier_identity": "static-security-scanner"
+    },
+    {
+      "binding_id": "binding:plugin-signature-verified",
+      "requirement_id": "evidence:plugin-signature-verified",
+      "subject": "plugin://com.acme.sandbox@1.0.0",
+      "evidence_kind": "signature.record",
+      "provenance": "VERIFIED",
+      "verdict": "SATISFIED",
+      "verifier_identity": "cosign-verifier"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "evidence_id": "audit:plugin-audit-passed",
+  "requirement_id": "evidence:plugin-audit-passed",
+  "scanner": "static-security-scanner",
+  "subject": "plugin://com.acme.sandbox@1.0.0",
+  "findings": 0,
+  "verdict": "SATISFIED",
+  "provenance": "VERIFIED"
+}

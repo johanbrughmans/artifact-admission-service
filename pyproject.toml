@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artifact-admission-service"
+version = "0.1.0"
+description = "Plugin and artifact release admission governance service (Independent Consumer #2)."
+requires-python = ">=3.11"
+authors = [{ name = "johanbrughmans" }]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["artifact_admission*"]

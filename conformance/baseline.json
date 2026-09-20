@@ -1,0 +1,15 @@
+{
+  "case_id": "artifact-admission-conformance-baseline",
+  "coverage_requirements": [
+    {
+      "requirement_id": "coverage-req:plugin-sandbox-isolation",
+      "capability_id": "capability://plugin-sandbox-isolation@v1",
+      "required_dimensions": {
+        "isolated": true,
+        "runtime": "wasm"
+      },
+      "exact_realization_id": "realization://wasm-isolated-runtime@v1",
+      "allow_bounded_substitution": true
+    }
+  ]
+}

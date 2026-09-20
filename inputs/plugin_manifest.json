@@ -1,0 +1,7 @@
+{
+  "plugin_id": "com.acme.sandbox",
+  "version": "1.0.0",
+  "artifact_sha256": "3a7b1c4e9f8021d56e78a2f5b4c3d2e1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5",
+  "runtime": "wasm",
+  "entrypoint": "plugin.wasm"
+}
