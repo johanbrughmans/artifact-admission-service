@@ -9,6 +9,7 @@
       "claim": "security_audit_passed",
       "accepted_evidence_kinds": ["audit.report"],
       "accepted_provenances": ["VERIFIED"],
+      "exact_candidate_sha": "3a7b1c4e9f8021d56e78a2f5b4c3d2e1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5",
       "verifier_identity": "static-security-scanner"
     },
     {
@@ -17,6 +18,7 @@
       "claim": "signature_verified",
       "accepted_evidence_kinds": ["signature.record"],
       "accepted_provenances": ["VERIFIED"],
+      "exact_candidate_sha": "3a7b1c4e9f8021d56e78a2f5b4c3d2e1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5",
       "verifier_identity": "cosign-verifier"
     }
   ],
@@ -28,6 +30,7 @@
       "evidence_kind": "audit.report",
       "provenance": "VERIFIED",
       "verdict": "SATISFIED",
+      "candidate_sha": "3a7b1c4e9f8021d56e78a2f5b4c3d2e1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5",
       "verifier_identity": "static-security-scanner"
     },
     {
@@ -37,6 +40,7 @@
       "evidence_kind": "signature.record",
       "provenance": "VERIFIED",
       "verdict": "SATISFIED",
+      "candidate_sha": "3a7b1c4e9f8021d56e78a2f5b4c3d2e1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5",
       "verifier_identity": "cosign-verifier"
     }
   ]

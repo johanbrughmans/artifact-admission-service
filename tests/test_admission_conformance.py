@@ -5,15 +5,17 @@ using Semanti-piler installed as a clean wheel package.
 """
 from __future__ import annotations
 
+import ast
 import json
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from semantipiler.api.conformance import (
+from semantipiler.api.v1 import (
     CONFORMANCE_EVIDENCE_BUNDLE_SCHEMA_VERSION,
     evaluate_consumer_conformance,
+    verify_conformance_evidence_bundle,
 )
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -22,6 +24,42 @@ _ROOT = Path(__file__).resolve().parent.parent
 class ArtifactAdmissionConformanceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.profile_path = _ROOT / "semantipiler-profile.json"
+
+    def test_consumer_imports_only_supported_public_facade(self) -> None:
+        """Verify Consumer #2 never imports Semanti-piler internal implementation modules."""
+        forbidden_prefixes = (
+            "semantipiler.api.conformance",
+            "semantipiler.api.consumer_profile",
+            "semantipiler.core",
+            "semantipiler.semantics",
+            "semantipiler.profiles",
+            "semantipiler.adapters",
+            "semantipiler.analysis",
+        )
+        for py_file in _ROOT.rglob("*.py"):
+            if ".venv" in py_file.parts or ".git" in py_file.parts:
+                continue
+            tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    for forbidden in forbidden_prefixes:
+                        self.assertFalse(
+                            node.module == forbidden or node.module.startswith(forbidden + "."),
+                            f"{py_file} contains forbidden internal import from '{node.module}'",
+                        )
+                    if node.module.startswith("semantipiler"):
+                        self.assertEqual(
+                            node.module,
+                            "semantipiler.api.v1",
+                            f"{py_file} imports '{node.module}', expected only 'semantipiler.api.v1'",
+                        )
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        for forbidden in forbidden_prefixes:
+                            self.assertFalse(
+                                alias.name == forbidden or alias.name.startswith(forbidden + "."),
+                                f"{py_file} contains forbidden internal import of '{alias.name}'",
+                            )
 
     def test_positive_trajectory_conformance_passes(self) -> None:
         bundle = evaluate_consumer_conformance(
@@ -39,12 +77,88 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
         self.assertEqual(payload["evaluations"]["transition_admissibility"]["verdict"], "SATISFIED")
         self.assertEqual(payload["evaluations"]["capability_coverage"]["verdict"], "SATISFIED")
 
-        from semantipiler.api.v1 import verify_conformance_evidence_bundle
+        # Verify candidate_sha matches in both evidence requirements
+        ev_results = payload["evaluations"]["evidence_satisfaction"]["results"]
+        for r in ev_results:
+            self.assertIn("candidate_sha", r["matched_dimensions"])
+
         self.assertTrue(verify_conformance_evidence_bundle(payload))
         self.assertTrue(payload["product"]["candidate_identity"].startswith("pkg:"))
         self.assertEqual(payload["product"]["candidate_identity"], f"pkg:{payload['product']['package_digest_sha256']}")
 
-    def test_adversarial_1_missing_signature_evidence_fails_closed(self) -> None:
+    def test_positive_bounded_substitution_trajectory(self) -> None:
+        """Prove an evidence-backed substitute realization satisfies capability coverage when substitution is allowed."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
+            repo = tmp_root / "repo"
+
+            # Mutate coverage claim to declare substitute realization with BOUNDED_SUBSTITUTION
+            cov_file = repo / "contracts/coverage.json"
+            cov_data = json.loads(cov_file.read_text(encoding="utf-8"))
+            cov_data["claims"][0]["realization_claim_id"] = "realization://wasm-sandboxed-substitute@v1"
+            cov_data["claims"][0]["resolution_kind"] = "BOUNDED_SUBSTITUTION"
+            cov_data["claims"][0]["allow_bounded_substitution"] = True
+            cov_file.write_text(json.dumps(cov_data, indent=2), encoding="utf-8")
+
+            bundle = evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
+            self.assertEqual(bundle.status, "PASS")
+            self.assertEqual(bundle.capability_coverage.verdict.value, "SATISFIED")
+            cov_results = bundle.to_dict()["evaluations"]["capability_coverage"]["results"]
+            self.assertEqual(len(cov_results), 1)
+            self.assertEqual(cov_results[0]["resolution_kind"], "BOUNDED_SUBSTITUTION")
+            self.assertEqual(cov_results[0]["realization_claim_id"], "realization://wasm-sandboxed-substitute@v1")
+            self.assertEqual(cov_results[0]["verdict"], "SATISFIED")
+
+    def test_adversarial_substitution_disallowed_when_forbidden(self) -> None:
+        """Prove the same substitute realization is rejected when baseline forbids bounded substitution."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
+            repo = tmp_root / "repo"
+
+            # Claim offers substitute realization
+            cov_file = repo / "contracts/coverage.json"
+            cov_data = json.loads(cov_file.read_text(encoding="utf-8"))
+            cov_data["claims"][0]["realization_claim_id"] = "realization://wasm-sandboxed-substitute@v1"
+            cov_data["claims"][0]["resolution_kind"] = "BOUNDED_SUBSTITUTION"
+            cov_data["claims"][0]["allow_bounded_substitution"] = True
+            cov_file.write_text(json.dumps(cov_data, indent=2), encoding="utf-8")
+
+            # Baseline forbids bounded substitution
+            base_file = repo / "conformance/baseline.json"
+            base_data = json.loads(base_file.read_text(encoding="utf-8"))
+            base_data["coverage_requirements"][0]["allow_bounded_substitution"] = False
+            base_file.write_text(json.dumps(base_data, indent=2), encoding="utf-8")
+
+            bundle = evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
+            self.assertEqual(bundle.status, "FAIL")
+            self.assertNotEqual(bundle.capability_coverage.verdict.value, "SATISFIED")
+            discrepancies = bundle.to_dict()["evaluations"]["capability_coverage"]["results"][0]["discrepancies"]
+            self.assertTrue(any("bounded substitution not allowed" in d for d in discrepancies))
+
+    def test_adversarial_wrong_artifact_candidate_evidence_fails_closed(self) -> None:
+        """Prove evidence for artifact A cannot be reused for artifact B (consumer artifact candidate binding)."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
+            repo = tmp_root / "repo"
+
+            # Mutate binding to provide evidence for a different artifact candidate SHA
+            ev_file = repo / "contracts/evidence.json"
+            ev_data = json.loads(ev_file.read_text(encoding="utf-8"))
+            ev_data["bindings"][0]["candidate_sha"] = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            ev_file.write_text(json.dumps(ev_data, indent=2), encoding="utf-8")
+
+            bundle = evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
+            self.assertEqual(bundle.status, "FAIL")
+            self.assertNotEqual(bundle.evidence_satisfaction.verdict.value, "SATISFIED")
+            ev_results = bundle.to_dict()["evaluations"]["evidence_satisfaction"]["results"]
+            audit_result = next(r for r in ev_results if r["requirement_id"] == "evidence:plugin-audit-passed")
+            self.assertNotEqual(audit_result["verdict"], "SATISFIED")
+            self.assertTrue(any("candidate_sha_mismatch" in d for d in audit_result["discrepancies"]))
+
+    def test_adversarial_missing_signature_evidence_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -60,7 +174,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             self.assertEqual(bundle.status, "FAIL")
             self.assertNotEqual(bundle.evidence_satisfaction.verdict.value, "SATISFIED")
 
-    def test_adversarial_2_mismatched_verifier_identity_fails_closed(self) -> None:
+    def test_adversarial_mismatched_verifier_identity_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -76,7 +190,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             self.assertEqual(bundle.status, "FAIL")
             self.assertNotEqual(bundle.evidence_satisfaction.verdict.value, "SATISFIED")
 
-    def test_adversarial_3_insufficient_authority_scope_fails_closed(self) -> None:
+    def test_adversarial_insufficient_authority_scope_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -92,7 +206,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             self.assertEqual(bundle.status, "FAIL")
             self.assertNotEqual(bundle.transition_admissibility.verdict.value, "SATISFIED")
 
-    def test_adversarial_4_forbidden_effect_delta_fails_closed(self) -> None:
+    def test_adversarial_forbidden_effect_delta_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -108,7 +222,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             self.assertEqual(bundle.status, "FAIL")
             self.assertNotEqual(bundle.transition_admissibility.verdict.value, "SATISFIED")
 
-    def test_adversarial_5_unsupported_capability_fails_closed(self) -> None:
+    def test_adversarial_unsupported_capability_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -128,24 +242,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             self.assertEqual(bundle.status, "FAIL")
             self.assertNotEqual(bundle.capability_coverage.verdict.value, "SATISFIED")
 
-    def test_adversarial_6_substitution_disallowed_when_forbidden(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_root = Path(tmp_dir)
-            shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
-            repo = tmp_root / "repo"
-
-            # Claim offers bounded substitution but baseline forbids it
-            base_file = repo / "conformance/baseline.json"
-            base_data = json.loads(base_file.read_text(encoding="utf-8"))
-            base_data["coverage_requirements"][0]["exact_realization_id"] = "realization://different-hardware@v1"
-            base_data["coverage_requirements"][0]["allow_bounded_substitution"] = False
-            base_file.write_text(json.dumps(base_data, indent=2), encoding="utf-8")
-
-            bundle = evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
-            self.assertEqual(bundle.status, "FAIL")
-            self.assertNotEqual(bundle.capability_coverage.verdict.value, "SATISFIED")
-
-    def test_adversarial_7_malformed_normative_requirement_fails_closed(self) -> None:
+    def test_adversarial_malformed_normative_requirement_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -159,7 +256,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
                 evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
             self.assertIn("malformed conformance fixture JSON", str(exc.exception))
 
-    def test_adversarial_8_tampered_declaration_path_fails_closed(self) -> None:
+    def test_adversarial_tampered_declaration_path_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
@@ -174,9 +271,7 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             with self.assertRaises((ValueError, OSError)):
                 evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
 
-    def test_adversarial_9_product_identity_mismatch_fails_closed(self) -> None:
-        from semantipiler.api.v1 import verify_conformance_evidence_bundle
-
+    def test_adversarial_product_identity_mismatch_fails_closed(self) -> None:
         # 1. Asserting wrong expected identity at evaluation time fails closed
         with self.assertRaises(ValueError) as exc:
             evaluate_consumer_conformance(
@@ -195,3 +290,6 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             )
         self.assertIn("candidate identity mismatch", str(exc.exception))
 
+
+if __name__ == "__main__":
+    unittest.main()
