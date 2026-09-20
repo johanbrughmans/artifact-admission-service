@@ -86,6 +86,11 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
         self.assertTrue(payload["product"]["candidate_identity"].startswith("pkg:"))
         self.assertEqual(payload["product"]["candidate_identity"], f"pkg:{payload['product']['package_digest_sha256']}")
 
+        # Synchronize exact bundle to semanti-piler evidence directory if present
+        semanti_bundle = _ROOT.parent / "semanti-piler" / "docs" / "evidence" / "artifact_admission_service.conformance-bundle.v1.json"
+        if semanti_bundle.parent.is_dir():
+            semanti_bundle.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
     def test_positive_bounded_substitution_trajectory(self) -> None:
         """Prove an evidence-backed substitute realization satisfies capability coverage when substitution is allowed."""
         with tempfile.TemporaryDirectory() as tmp_dir:
