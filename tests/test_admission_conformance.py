@@ -144,3 +144,54 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
             bundle = evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
             self.assertEqual(bundle.status, "FAIL")
             self.assertNotEqual(bundle.capability_coverage.verdict.value, "SATISFIED")
+
+    def test_adversarial_7_malformed_normative_requirement_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
+            repo = tmp_root / "repo"
+
+            # Corrupt normative fixture file
+            base_file = repo / "conformance/baseline.json"
+            base_file.write_text("{corrupt-json", encoding="utf-8")
+
+            with self.assertRaises(ValueError) as exc:
+                evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
+            self.assertIn("malformed conformance fixture JSON", str(exc.exception))
+
+    def test_adversarial_8_tampered_declaration_path_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            shutil.copytree(_ROOT, tmp_root / "repo", ignore=shutil.ignore_patterns(".venv", ".git", "__pycache__", "tests"))
+            repo = tmp_root / "repo"
+
+            # Tamper profile declaration reference to nonexistent contract file
+            prof_file = repo / "semantipiler-profile.json"
+            prof_data = json.loads(prof_file.read_text(encoding="utf-8"))
+            prof_data["declarations"]["transitions"] = ["contracts/missing_transitions.json"]
+            prof_file.write_text(json.dumps(prof_data, indent=2), encoding="utf-8")
+
+            with self.assertRaises((ValueError, OSError)):
+                evaluate_consumer_conformance(repo / "semantipiler-profile.json", consumer_root=repo)
+
+    def test_adversarial_9_product_identity_mismatch_fails_closed(self) -> None:
+        from semantipiler.api.v1 import verify_conformance_evidence_bundle
+
+        # 1. Asserting wrong expected identity at evaluation time fails closed
+        with self.assertRaises(ValueError) as exc:
+            evaluate_consumer_conformance(
+                self.profile_path,
+                consumer_root=_ROOT,
+                expected_candidate_identity="fraudulent-semantipiler-candidate-identity",
+            )
+        self.assertIn("product candidate identity mismatch", str(exc.exception))
+
+        # 2. Verifying emitted bundle against wrong expected candidate identity fails closed
+        bundle = evaluate_consumer_conformance(self.profile_path, consumer_root=_ROOT)
+        with self.assertRaises(ValueError) as exc:
+            verify_conformance_evidence_bundle(
+                bundle.to_dict(),
+                expected_candidate_identity="fraudulent-semantipiler-candidate-identity",
+            )
+        self.assertIn("candidate identity mismatch", str(exc.exception))
+
