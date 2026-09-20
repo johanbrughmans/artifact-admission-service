@@ -39,6 +39,11 @@ class ArtifactAdmissionConformanceTests(unittest.TestCase):
         self.assertEqual(payload["evaluations"]["transition_admissibility"]["verdict"], "SATISFIED")
         self.assertEqual(payload["evaluations"]["capability_coverage"]["verdict"], "SATISFIED")
 
+        from semantipiler.api.v1 import verify_conformance_evidence_bundle
+        self.assertTrue(verify_conformance_evidence_bundle(payload))
+        self.assertTrue(payload["product"]["candidate_identity"].startswith("pkg:"))
+        self.assertEqual(payload["product"]["candidate_identity"], f"pkg:{payload['product']['package_digest_sha256']}")
+
     def test_adversarial_1_missing_signature_evidence_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
